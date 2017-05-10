@@ -1,8 +1,8 @@
-(ns flight-reservation
+(ns flight-simulator.sequential
   (:require [clojure.string]
             [clojure.pprint]
             #_[input-simple :as input]
-            [input-random :as input]))
+            [flight-simulator.input-random :as input]))
 
 (def logger (agent nil))
 (defn log [& msgs] (send logger (fn [_] (apply println msgs))))
@@ -130,12 +130,13 @@
 (defn sales-process []
   "The sales process starts and ends sales periods, until `finished-processing?`
   is true."
+  (Thread/sleep input/TIME_BETWEEN_SALES)
   (loop []
     (let [discounted-carrier (rand-nth input/carriers)]
-      (Thread/sleep input/TIME_BETWEEN_SALES)
       (start-sale discounted-carrier)
       (Thread/sleep input/TIME_OF_SALES)
       (end-sale discounted-carrier))
+      (Thread/sleep input/TIME_BETWEEN_SALES)
     (if (not @finished-processing?)
       (recur))))
 

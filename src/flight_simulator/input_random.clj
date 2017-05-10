@@ -1,4 +1,5 @@
-(ns input-random)
+(ns flight-simulator.input-random
+  (:gen-class))
 
 (def flights
   [{:id 0
