@@ -6,31 +6,58 @@
 	)
 )
 
-(def customers
-	"All customers are kept in a ref. This enables different threads to take a customer
-	from the list and update the list until all customers have been processed."
-	(ref []))
+(def logger (agent nil))
+(defn log [& msgs] (send logger (fn [_] (apply println msgs))))
+
+(def flights
+	"the flights are stored in a list"
+	(atom []))
+
+(def flights-per-carrier
+	(atom []))
 
 (def done? (atom false))
 
-(defn initialize-customers [init-customers]
-	(dosync 
-		(ref-set customers init-customers)
+(defn init-flights [init-value]
+	(reset! flights (map (fn [flight] (ref flight)) init-value))
 	)
-)
 
-(defn take-customer []
-	(dosync
-		(let [f (first @customers)
-			 r (rest @customers)
-			 len (count r)]
-			 (ref-set customers r)
+(defn init-flights-per-carrier [carriers]
+	(reset! flights-per-carrier 
+		(for [carrier input/carriers] 
+			{ :carrier carrier
+			  :flights (filter 
+			  	(fn [flight] 
+			  		(= (:carrier @flight) carrier)) 
+			  	@flights)})))
 
-			 (if (empty? r)
-			 	(reset! done? true))
-			 f)
+(defn flights-of-carrier [carrier]
+	(first (map :flights
+		(filter (fn [carrierslist] 
+					(= (:carrier carrierslist) carrier))
+				@flights-per-carrier))))
+
+(defn update-pricing [flight factor]
+	(ref-set flight 
+		(update @flight :pricing 
+			#(map (fn [[p a t]] [(* p factor) a t]) %)))
 	)
-)
+
+(defn update-carrier-price [carrier, factor]
+	(let [carrierflights (flights-of-carrier carrier)]
+		(dosync
+			(doseq [flight carrierflights]
+				   (update-pricing flight factor))
+				))
+	)
+
+(defn start-sale [carrier]
+	(log carrier "sale started")
+	(update-carrier-price carrier 0.80))
+
+(defn end-sale [carrier]
+	(log carrier "sale ended")
+	(update-carrier-price carrier 1.25))
 
 (defn print-customer [{:keys [id from to seats budget]}]
 	"Prints a single customer"
@@ -42,30 +69,26 @@
 		(print-customer customer))
 )
 
-(defn process-customers []
-	(let [customer (take-customer)]
-		(print-customer customer)
-		(if (not @done?)
-			(recur))))
+(defn sales-process []
+  "The sales process starts and ends sales periods, until `finished-processing?`
+  is true."
+  (Thread/sleep input/TIME_BETWEEN_SALES)
+  (loop []
+    (let [discounted-carrier (rand-nth input/carriers)]
+      (start-sale discounted-carrier)
+      (Thread/sleep input/TIME_OF_SALES)
+      (end-sale discounted-carrier))
+      (Thread/sleep input/TIME_BETWEEN_SALES)
+    (if (not @done?)
+      (recur))))
 
-(defn split-in-thread []
-	(let [f1 (future (process-customers))
-		  f2 (future (process-customers))
-		  f3 (future (process-customers))
-		  f4 (future (process-customers))]	
-	@f1
-	@f2
-	@f3
-	@f4
-	)
-)
+(defn -main []
+	(init-flights input/flights)
+	(init-flights-per-carrier input/carriers)
+	(let [sales-loop (future (sales-process))]
 
-(defn main []
-	(initialize-customers input/customers)
-	(let [f1 (future (time (split-in-thread)))]	
-	@f1
-	)
-)
-
-(main)
-(shutdown-agents)
+	(pmap print-customer input/customers) 
+	(reset! done? true)
+	@sales-loop
+	(shutdown-agents)
+))
