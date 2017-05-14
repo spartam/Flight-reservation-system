@@ -1,4 +1,4 @@
-(ns input-simple)
+(ns flight-simulator.input-simple)
 
 (def flights
   [{:id 0
